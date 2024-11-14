@@ -26,7 +26,7 @@ async def get_headers(DB_TOKEN):
 async def get_page(DB_ID, DB_TOKEN, num_pages: int=None) -> list:
     url = f"https://api.notion.com/v1/databases/{DB_ID}/query"
     headers = await get_headers(DB_TOKEN)
-    print(headers)
+    # print(headers)
     get_all = num_pages is None
     page_size = 100 if get_all else num_pages
 
@@ -44,7 +44,7 @@ async def get_page(DB_ID, DB_TOKEN, num_pages: int=None) -> list:
                 data = await response.json()
         results.extend(data.get("results"))
 
-    pprint.pprint(data.get('results'))
+    # # pprint.pprint(data.get('results'))
 
     # with open('notion.txt', 'w') as f:
     #     json.dump(data, f, ensure_ascii=False, indent=4)
@@ -55,9 +55,9 @@ async def get_page(DB_ID, DB_TOKEN, num_pages: int=None) -> list:
         props = page["properties"]
         url = props["URL"]["title"][0]["text"]["content"]
         title = props["Title"]["rich_text"][0]["text"]["content"]
-        published = props["Priority"]["select"]["name"]
-        text = props["Category"]['rich_text'][0]['plain_text']
-        print(url, title, published, text)
+        priority = props["Priority"]["select"]["name"]
+        category = props["Category"]['rich_text'][0]['plain_text']
+        # print(url, title, published, text)
 
     return results
 
@@ -72,10 +72,10 @@ async def create_page(data: dict, DB_ID, DB_TOKEN) -> dict:
             return await response.json()
 
 
-URL = "I am"
-Title = "The"
-Category = "Guru"
-Priority = "One"
+URL = "I"
+Title = "am"
+Category = "the"
+Priority = "guru"
 
 
 async def create_page_data(URL, Title, Category, Priority) -> dict:

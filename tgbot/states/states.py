@@ -12,6 +12,10 @@ class GetCategoryPriority(StatesGroup):
     priority = State()
 
 
+class GetSetData(StatesGroup):
+    priority = State()
+    category = State()
+
 class GetNotionDB(StatesGroup):
     db_token = State()
     db_id = State()

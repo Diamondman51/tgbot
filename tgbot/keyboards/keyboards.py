@@ -1,14 +1,28 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
 
 async def after_start_keyboard():
 
     keyboard = ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="Получить ссылки"), ],
-    ], resize_keyboard=True)
+        [KeyboardButton(text="По приоритету"), KeyboardButton(text="По категорию")],
+    ], resize_keyboard=True,)
 
     return keyboard
+
+
+# async def make_priorities(names: list):
+#     keyboard = ReplyKeyboardBuilder()
+#     for name in names:
+#         keyboard.add(KeyboardButton(text=name))
+#     return keyboard.adjust(3).as_markup()
+
+
+async def make_categories_priorities(names: set):
+    keyboard = ReplyKeyboardBuilder()
+    for name in names:
+        keyboard.add(KeyboardButton(text=name))
+    return keyboard.adjust(3).as_markup(resize_keyboard=True)
 
 
 async def ask_notion():

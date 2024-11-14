@@ -16,6 +16,10 @@ def setup() -> Router:
     router.message.register(get_notion_db_id, GetNotionDB.db_id)
     router.message.register(get_category, GetCategoryPriority.category)
     router.message.register(get_priority, GetCategoryPriority.priority)
+    router.message.register(by_priority, F.text == 'По приоритету')
+    router.message.register(by_category, F.text == 'По категорию')
+    router.message.register(get_by_priority, GetSetData.priority)
+    router.message.register(get_by_category, GetSetData.category)
     router.message.register(get_links, F.text)
 
 
