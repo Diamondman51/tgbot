@@ -31,25 +31,21 @@ async def ask_notion():
         [InlineKeyboardButton(text="Нет", callback_data='no')],
     ])
     
-
     return keyboard
 
 
-async def ask_notion():
+async def ask_notion_keyboard():
     keyboard = InlineKeyboardBuilder([
         [InlineKeyboardButton(text="Да", callback_data='yes')],
         [InlineKeyboardButton(text="Нет", callback_data='no')],
     ])
-    
-
     return keyboard.adjust(2).as_markup()
 
 
-async def change_notion():
+async def change_notion_keyboard():
     keyboard = InlineKeyboardBuilder([
-        [InlineKeyboardButton(text="Да", callback_data='yes')],
-        [InlineKeyboardButton(text="Нет", callback_data='no')],
+        [InlineKeyboardButton(text="Да, меняем", callback_data='change')],
+        [InlineKeyboardButton(text="Нет, оставим", callback_data='save')],
     ])
-    
 
     return keyboard.adjust(2).as_markup()

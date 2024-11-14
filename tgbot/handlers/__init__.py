@@ -12,6 +12,8 @@ def setup() -> Router:
     router.message.register(start_command_handler, CommandStart())
     router.callback_query.register(get_notion_db, F.data == 'yes')
     router.callback_query.register(no_notion_token, F.data == 'no')
+    router.callback_query.register(leave, F.data == 'save')
+    router.callback_query.register(get_notion_db, F.data == 'change')
     router.message.register(get_notion_db_token, GetNotionDB.db_token)
     router.message.register(get_notion_db_id, GetNotionDB.db_id)
     router.message.register(get_category, GetCategoryPriority.category)
@@ -21,6 +23,7 @@ def setup() -> Router:
     router.message.register(get_by_priority, GetSetData.priority)
     router.message.register(get_by_category, GetSetData.category)
     router.message.register(get_links, F.text)
+    router.message.register(get_links, F)
 
 
     return router

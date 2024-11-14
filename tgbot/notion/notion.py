@@ -69,7 +69,7 @@ async def create_page(data: dict, DB_ID, DB_TOKEN) -> dict:
     async with aiohttp.ClientSession() as session:
         async with session.post(create_url, headers=headers, json=payload) as response:
             # print(await response.json())
-            return await response.json()
+            return await response.json(), response
 
 
 URL = "I"

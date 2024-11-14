@@ -15,19 +15,30 @@ session = session
 
 async def start_command_handler(message: types.Message, state: FSMContext):
     from_user = message.from_user
+    async with session() as conn:    
+        user  = select(exists().where(User.tg_user_id == from_user.id))
+        user = await conn.execute(user)
+        user = user.scalar()
+        print(user)
+        if not user:    
+            greeting_text = f"Здравствуйте, {from_user.full_name}! У вас есть Notion Database?"
+            user = User(tg_user_id=from_user.id)
+            session().add(user)
+            await conn.commit()
+            keyboard = await ask_notion_keyboard()
+            await message.answer(greeting_text, reply_markup=keyboard)
+        elif user:
+            greeting_text = f"С возвращением {from_user.full_name}, меняем Notion базу?"
+            await message.answer(greeting_text, reply_markup= await change_notion_keyboard())
 
-    # TODO need to make notion db changable
-    # user = select(exists().where(User.tg_user_id == from_user.id))
-    # user = await session().execute(user)
-    # user = user.scalar()
-    # if not user:
-    greeting_text = f"Здравствуйте, {from_user.full_name}! У вас есть Notion?"
-    keyboard = await ask_notion()
-    await message.answer(greeting_text, reply_markup=keyboard)
-    # await message.answer('', reply_markup=await after_start_keyboard())
-    
-    # else:
-        
+
+async def leave(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.clear()
+    await callback.message.answer("Отлично, можете продолжать", reply_markup=await after_start_keyboard())
+    # await callback.message.answer("",)
+    # callback.message.answer("Все готово, можете продолжать")
+
 
 async def get_notion_db(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -50,15 +61,22 @@ async def get_notion_db_id(message: types.Message, state: FSMContext):
         user = select(exists().where(User.tg_user_id == user_id))
         user = await conn.execute(user)
         user = user.scalar()
+        db_token = db.get('db_token')
+        db_id = db.get("db_id")
         if not user:
-            db_token = db.get('db_token')
-            db_id = db.get("db_id")
             new_user = User(tg_user_id=message.from_user.id, notion_db_token=db_token, notion_db_id=db_id)
             conn.add(new_user)
             await conn.commit()
+        elif user:
+            user = select(User).where(User.tg_user_id == message.from_user.id)
+            res = await conn.execute(user)
+            user = res.scalar()
+            user.notion_db_token = db_token
+            user.notion_db_id = db_id
+            await conn.commit()
 
     await state.clear()
-    pprint(db)
+    # pprint(db)
 
 
 async def no_notion_token(callback: types.CallbackQuery):
@@ -81,13 +99,18 @@ async def get_links(message: types.Message, state: FSMContext):
     url_pattern = r'https?://[^\s\)\]]+'
     # Extract all links from the message text
     
+    print(message.text)
 
     # Check if the message was forwarded from a user
     if message.forward_from:
         user = message.forward_from
         response = f"Сообщение было переслано от пользователя: {user.full_name}, Type: {user} (@{user.username if user.username else 'Нет username'})."
         print(response)
-        links: str = re.findall(url_pattern, message.text)
+
+        message_text = message.text if message.text else message.caption
+        
+        links: str = re.findall(url_pattern, message_text)
+        
         await category(message, state, links)
 
     # Check if the message was forwarded from a channel or group
@@ -96,25 +119,29 @@ async def get_links(message: types.Message, state: FSMContext):
         chat_type = "канала" if chat.type == "channel" else "группы"
         response = f"Сообщение было переслано из {chat_type}: {chat.title} (@{chat.username if chat.username else 'Нет username'})"
         print(response)
-        links: str = re.findall(url_pattern, message.text)
+        message_text = message.text if message.text else message.caption
+        links: str = re.findall(url_pattern, message_text)
         await category(message, state, links)
     
     # If the message was forwarded but the original sender is hidden
     elif message.forward_sender_name:
         response = f"Сообщение было переслано от: {message.forward_sender_name}."
         print(response)
-        links: str = re.findall(url_pattern, message.text)
+        message_text = message.text if message.text else message.caption
+        links: str = re.findall(url_pattern, message_text)
         await category(message, state, links)
 
-    elif message.forward_origin:
-        print(f"message origin")
+
+    # elif message.forward_origin:
+    #     print(f"message origin")
         
-    elif message.forward_from_message_id:
-        print(f"message id")
+    # elif message.forward_from_message_id:
+    #     print(f"message id")
 
 
     else:
-        links: str = re.findall(url_pattern, message.text)
+        message_text = message.text if message.text else message.caption
+        links: str = re.findall(url_pattern, message_text)
         print('Get links links', links, '\n')
         await category(message, state, links)
     print(message.text)
@@ -154,6 +181,7 @@ async def get_priority(message: types.Message, state: FSMContext):
     await save_links(message, links, user_id, category, priority)
     await state.clear()
 
+
 async def save_links(message: types.Message, links: list, user_id, category: str, priority: str):
     try:
         async with session() as conn:
@@ -168,9 +196,9 @@ async def save_links(message: types.Message, links: list, user_id, category: str
                 conn.add(new_link)
             await conn.commit()
         print('\n--------------------Links--------------------\n', links, '\n')
-        await message.answer('Ваши ссылки успешно сохранены', reply_markup=await after_start_keyboard())
+        await message.answer('Ваши ссылки успешно сохранены в базу', reply_markup=await after_start_keyboard())
     except Exception as e:
-        await message.answer("Произошла ошибка")
+        await message.answer("Произошла ошибка, повторите попытку", reply_markup= await after_start_keyboard())
         print("Error", e)
 
     async with session() as conn:
@@ -183,16 +211,21 @@ async def save_links(message: types.Message, links: list, user_id, category: str
         db_id = user.notion_db_id
 
         if db_token and db_id:
-            co = 0
+            co = 1
+            ls = []
             for url in links:
                 try:
                     data = await create_page_data(url, title, category, priority)
-                    page = await create_page(data, db_id, db_token)
+                    page, response = await create_page(data, db_id, db_token)
+                    ls.append(response.status == 200)
+                    print('Page', page)
                     print(co, 'сохранен')
                     co += 1
                 except Exception as e:
-                    await message.answer("Произошла ошибка во время сохранения ссылок в Notion")
+                    await message.answer("Произошла ошибка во время сохранения ссылок в Notion, повторите попытку", reply_markup= await after_start_keyboard())
                     print("Error", e)
+            if all(ls):
+                await message.answer("Ваши ссылки успешно сохранены в Notion Database", reply_markup= await after_start_keyboard())
 
 
 async def by_priority(message: types.Message, state: FSMContext):
@@ -206,29 +239,50 @@ async def by_priority(message: types.Message, state: FSMContext):
         if db_token and db_id:
             data = await get_page(db_id, db_token)
             set_data = {field['properties']["Priority"]["select"]["name"] for field in data}
-            keyboard = await make_categories_priorities(set_data)
-            await state.update_data(set_data=set_data)
-            await state.set_state(GetSetData.priority)
-            await message.answer("Выберите приоритет: ", reply_markup=keyboard)
             pprint(data)
+            if set_data:
+                keyboard = await make_categories_priorities(set_data)
+                page = [[field['properties']["URL"]["title"][0]["text"]["content"], field['properties']["Title"]["rich_text"][0]["text"]["content"], field['properties']["Priority"]["select"]["name"], field['properties']["Category"]['rich_text'][0]['plain_text']] for field in data]
+                await state.update_data(set_data=set_data)
+                await state.set_state(GetSetData.priority)
+                await state.update_data(page=page)
+                await message.answer("Выберите приоритет: ", reply_markup=keyboard)
+                # pprint(data)
+            else:
+                await message.answer('Извините, у вас пока нет приоритетов(', reply_markup= await after_start_keyboard())
+
 
         else:
             links = select(Links).filter(Links.user_id == message.from_user.id)
             links = await conn.execute(links)
             links = links.scalars().all()
             set_data = {link.priority for link in links}
-            keyboard = await make_categories_priorities(set_data)
-            await message.answer("Выберите приоритет: ", reply_markup=keyboard)
-            print('By priority links: \t', *{link.priority for link in links})
+            if set_data:    
+                keyboard = await make_categories_priorities(set_data)
+                await message.answer("Выберите приоритет: ", reply_markup=keyboard)
+                print('By priority links: \t', *{link.priority for link in links})
+            else:
+                await message.answer('Извините, у вас пока нет приоритетов(', reply_markup= await after_start_keyboard())
 
 
 async def get_by_priority(message: types.Message, state: FSMContext):
-    links = select(Links).filter(Links.priority == message.text)
+    data = await state.get_data()
+    pages = data.get("page")
+    pages = filter(lambda page: page[2] == message.text, pages)
+    print(pages)
     async with session() as conn:
-        links = await conn.execute(links)
-        links = links.scalars().all()
-        for link in links:
-            await message.answer(f"URL: {link.url}\nTitle: {link.title}\nCategory: {link.category}\nPriority: {link.priority}",)
+        if pages:
+            for page in pages:
+                await message.answer(f"URL: {page[0]}\nTitle: {page[1]}\nPriority: {page[2]}\nCategory: {page[3]}", reply_markup= await after_start_keyboard())
+        elif not pages:    
+            links = select(Links).filter(Links.priority == message.text)
+            links = await conn.execute(links)
+            links = links.scalars().all()
+            if links:
+                for link in links:
+                    await message.answer(f"URL: {link.url}\nTitle: {link.title}\nCategory: {link.category}\nPriority: {link.priority}", reply_markup= await after_start_keyboard())
+            else:
+                await message.answer('Извините, у вас нет ссылок по этому приоритету')
     await message.answer('Success', reply_markup= await after_start_keyboard())
 
     await state.clear()
@@ -245,29 +299,56 @@ async def by_category(message: types.Message, state: FSMContext):
         if db_token and db_id:
             data = await get_page(db_id, db_token)
             set_data = {field['properties']["Category"]['rich_text'][0]['plain_text'] for field in data}
-            keyboard = await make_categories_priorities(set_data)
-            await state.update_data(set_data=set_data)
-            await state.set_state(GetSetData.category)
-            await message.answer("Выберите категорию: ", reply_markup=keyboard)
-            pprint(data)
+            if set_data:
+                keyboard = await make_categories_priorities(set_data)
+                page = [[field['properties']["URL"]["title"][0]["text"]["content"], field['properties']["Title"]["rich_text"][0]["text"]["content"], field['properties']["Priority"]["select"]["name"], field['properties']["Category"]['rich_text'][0]['plain_text']] for field in data]
+                await state.update_data(set_data=set_data)
+                await state.update_data(page=page)
+                await state.set_state(GetSetData.category)
+                await message.answer("Выберите категорию: ", reply_markup=keyboard)
+                # pprint(data)
+            else:
+                await message.answer('Извините, у вас пока нет категорий(', reply_markup= await after_start_keyboard())
 
         else:
             links = select(Links).filter(Links.user_id == message.from_user.id)
             links = await conn.execute(links)
             links = links.scalars().all()
-            set_data = {link.priority for link in links}
-            keyboard = await make_categories_priorities(set_data)
-            await message.answer("Выберите категорию: ", reply_markup=keyboard)
-            print('By priority links: \t', *{link.priority for link in links})
+            set_data = {link.category for link in links}
+            if set_data:
+                keyboard = await make_categories_priorities(set_data)
+                await message.answer("Выберите категорию: ", reply_markup=keyboard)
+                print('By priority links: \t', *{link.priority for link in links})
+            else:
+                await message.answer('Извините, у вас пока нет категорий(', reply_markup= await after_start_keyboard())
 
 
 async def get_by_category(message: types.Message, state: FSMContext):
-    links = select(Links).filter(Links.category == message.text)
+    data = await state.get_data()
+    pages = data.get("page")
+    # async with session() as conn:
+    #     links = await conn.execute(links)
+    #     links = links.scalars().all()
+    #     for link in links:
+    #         await message.answer(f"URL: {link.url}\nTitle: {link.title}\nCategory: {link.category}\nPriority: {link.priority}",)
+    # await message.answer('Success', reply_markup= await after_start_keyboard())
+
+    # await state.clear()
+    pages = filter(lambda page: page[3] == message.text, pages)
+
     async with session() as conn:
-        links = await conn.execute(links)
-        links = links.scalars().all()
-        for link in links:
-            await message.answer(f"URL: {link.url}\nTitle: {link.title}\nCategory: {link.category}\nPriority: {link.priority}",)
+        if pages:
+            for page in pages:
+                await message.answer(f"URL: {page[0]}\nTitle: {page[1]}\nPriority: {page[2]}\nCategory: {page[3]}", reply_markup= await after_start_keyboard())
+        elif not pages:    
+            links = select(Links).filter(Links.category == message.text)
+            links = await conn.execute(links)
+            links = links.scalars().all()
+            if links:
+                for link in links:
+                    await message.answer(f"URL: {link.url}\nTitle: {link.title}\nCategory: {link.category}\nPriority: {link.priority}", reply_markup= await after_start_keyboard())
+            else:
+                await message.answer('Извините, у вас нет ссылок по этому приоритету')
     await message.answer('Success', reply_markup= await after_start_keyboard())
 
     await state.clear()
