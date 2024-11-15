@@ -20,7 +20,7 @@ async def start_command_handler(message: types.Message, state: FSMContext):
         user = await conn.execute(user)
         user = user.scalar()
         print(user)
-        if not user:    
+        if not user:
             greeting_text = f"Здравствуйте, {from_user.full_name}! У вас есть Notion Database?"
             user = User(tg_user_id=from_user.id)
             session().add(user)
@@ -28,8 +28,17 @@ async def start_command_handler(message: types.Message, state: FSMContext):
             keyboard = await ask_notion_keyboard()
             await message.answer(greeting_text, reply_markup=keyboard)
         elif user:
-            greeting_text = f"С возвращением {from_user.full_name}, меняем Notion базу?"
-            await message.answer(greeting_text, reply_markup= await change_notion_keyboard())
+            user = select(User).where(User.tg_user_id == from_user.id)
+            res = await conn.execute(user)
+            user = res.scalar()
+            db_token = user.notion_db_token
+            db_id = user.notion_db_id
+            if db_token and db_id:
+                greeting_text = f"С возвращением {from_user.full_name}, меняем Notion базу?"
+                await message.answer(greeting_text, reply_markup= await change_notion_keyboard())
+            else:
+                greeting_text = f"С возвращением {from_user.full_name}, добавим Notion базу?"
+                await message.answer(greeting_text, reply_markup= await ask_notion())
 
 
 async def leave(callback: types.CallbackQuery, state: FSMContext):
@@ -155,7 +164,27 @@ async def get_links(message: types.Message, state: FSMContext):
 
 async def category(message: types.Message, state: FSMContext, links: list):
     if links:
-        await message.answer('Введите категорию: ')
+        user = select(User).filter(User.tg_user_id == message.from_user.id)
+        async with session() as conn:
+            user = await conn.execute(user)
+            user = user.scalar()
+            db_token = user.notion_db_token
+            db_id = user.notion_db_id
+
+            if db_token and db_id:
+                data = await get_page(db_id, db_token)
+                set_data = {field['properties']["Category"]['rich_text'][0]['plain_text'] for field in data}
+                keyboard = await make_categories_priorities(set_data)
+
+            else:
+                links = select(Links).filter(Links.user_id == message.from_user.id)
+                links = await conn.execute(links)
+                links = links.scalars().all()
+                set_data = {link.category for link in links}
+                if set_data:
+                    keyboard = await make_categories_priorities(set_data)
+   
+        await message.answer('Выберите или введите категорию: ', reply_markup= keyboard)
         await state.update_data(links=links)
         await state.set_state(GetCategoryPriority.category)
     else:
@@ -167,7 +196,28 @@ async def category(message: types.Message, state: FSMContext, links: list):
 async def get_category(message: types.Message, state: FSMContext):
     await state.update_data(category=message.text)
     await state.set_state(GetCategoryPriority.priority)
-    await message.answer('Введите приоритет: ')
+    user = select(User).filter(User.tg_user_id == message.from_user.id)
+    async with session() as conn:
+        user = await conn.execute(user)
+        user = user.scalar()
+        db_token = user.notion_db_token
+        db_id = user.notion_db_id
+
+        if db_token and db_id:
+            data = await get_page(db_id, db_token)
+            set_data = {field['properties']["Priority"]["select"]["name"] for field in data}
+            pprint(data)
+            if set_data:
+                keyboard = await make_categories_priorities(set_data)
+        else:
+            links = select(Links).filter(Links.user_id == message.from_user.id)
+            links = await conn.execute(links)
+            links = links.scalars().all()
+            set_data = {link.priority for link in links}
+            if set_data:    
+                keyboard = await make_categories_priorities(set_data)
+
+    await message.answer('Выберите или введите приоритет: ', reply_markup=keyboard)
 
 
 async def get_priority(message: types.Message, state: FSMContext):

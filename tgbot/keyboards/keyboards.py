@@ -49,3 +49,4 @@ async def change_notion_keyboard():
     ])
 
     return keyboard.adjust(2).as_markup()
+
